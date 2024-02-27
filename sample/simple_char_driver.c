@@ -38,6 +38,7 @@ static int __init simplechar_init(void)
 {
     printk(KERN_INFO "SimpleChar: Initializing the SimpleChar LKM\n");
 
+    // デバイス番号動的割り当て
     majorNumber = register_chrdev(0, DEVICE_NAME, &fops);
     if (majorNumber < 0)
     {
@@ -46,6 +47,7 @@ static int __init simplechar_init(void)
     }
     printk(KERN_INFO "SimpleChar: registered correctly with major number %d\n", majorNumber);
 
+    // デバイスクラスの作成
     simplecharClass = class_create(CLASS_NAME);
     if (IS_ERR(simplecharClass))
     {
@@ -55,6 +57,7 @@ static int __init simplechar_init(void)
     }
     printk(KERN_INFO "SimpleChar: device class registered correctly\n");
 
+    // デバイスの作成
     simplecharDevice = device_create(simplecharClass, NULL, MKDEV(majorNumber, 0), NULL, DEVICE_NAME);
     if (IS_ERR(simplecharDevice))
     {
@@ -86,20 +89,25 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 {
     int error_count = 0;
 
+    // 既に読み取り位置がメッセージの終わりを超えているかチェック
     if (*offset >= size_of_message)
     {
         return 0;
     }
 
+    // 要求された長さが残りのメッセージサイズを超えていないか確認
     if (len > size_of_message - *offset)
     {
         len = size_of_message - *offset;
     }
 
+    // ユーザー空間へのデータのコピー
     error_count = copy_to_user(buffer, message + *offset, len);
 
     if (error_count == 0)
     {
+        // オフセット（読み取り位置）の更新
+        *offset += len;
         printk(KERN_INFO "SimpleChar: Sent %zu characters to the user\n", len);
         return len;
     }
@@ -114,17 +122,21 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
 {
     unsigned long not_copied;
 
+    // 入力データがバッファサイズを超えていないかチェック
     if (len > sizeof(message) - 1)
     {
         printk(KERN_WARNING "SimpleChar: Input data is too long\n");
         return -EINVAL;
     }
 
+    // ユーザー空間からのデータのコピー
     not_copied = copy_from_user(message, buffer, len);
 
     if (not_copied == 0)
     {
+        // 終端文字の追加
         message[len] = '\0';
+        // メッセージサイズの更新
         size_of_message = strlen(message);
         printk(KERN_INFO "SimpleChar: Received %zu characters from the user\n", len);
         return len;
